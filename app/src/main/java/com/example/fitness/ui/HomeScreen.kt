@@ -4,6 +4,7 @@ package com.example.fitness.ui
 
 import android.content.Intent
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,6 +30,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -38,15 +40,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-// --- 功能模組引用 ---
+// --- 機能模組引用 ---
 import com.example.fitness.activity.ActivityLogRepository
 import com.example.fitness.auth.SessionManager
 import com.example.fitness.auth.SessionRepository
 import com.example.fitness.chat.ChatScreen
 import com.example.fitness.coach.UserRole
 import com.example.fitness.data.DietRecord
-import com.example.fitness.data.DietRecordRepository
-import com.example.fitness.data.ExerciseEntry
+import com.example.fitness.data.FirebaseDietRecordRepository // 引用 FirebaseRepo
 import com.example.fitness.data.FirebaseTrainingRecordRepository
 import com.example.fitness.data.TrainingPlan
 import com.example.fitness.data.TrainingPlanRepository
@@ -63,6 +64,12 @@ import com.example.fitness.ui.theme.glassEffect
 import com.example.fitness.ui.theme.neonGlowBorder
 import com.example.fitness.user.UserProfileRepository
 import com.example.fitness.user.UserRoleProfileRepository
+import com.example.fitness.ui.settings.ProfileBasicSettingsScreen
+import com.example.fitness.ui.settings.WaterGoalDialog
+import com.example.fitness.ui.settings.WaterIntakeCard
+import com.example.fitness.nutrition.AdvancedNutritionRepository
+import com.example.fitness.user.FirebaseUserProfileFirestoreRepository
+import com.example.fitness.user.UserProfile
 
 // --- Google & Firebase 引用 ---
 import com.google.android.gms.ads.AdRequest
@@ -77,7 +84,6 @@ import com.google.ai.client.generativeai.type.generationConfig
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -89,7 +95,7 @@ import kotlin.math.roundToInt
 
 // ★★★ Gemini AI 服務 (用於飲食分析) ★★★
 object GeminiFoodAIService {
-    private const val API_KEY = "AIzaSyD1APiHVIjuexZgk_X7OF3UQ_TtUcAi-Hw"
+    private const val API_KEY = "AIzaSyC2KzjIq3UgiSYLvB5SGu2Eb0e6QdjgVBw"
     private const val MODEL_NAME = "gemini-2.5-flash"
 
     suspend fun analyze(text: String): DietRecord? {
@@ -126,7 +132,7 @@ object GeminiFoodAIService {
                 id = UUID.randomUUID().toString(),
                 userId = FirebaseAuth.getInstance().currentUser?.uid ?: "",
                 date = LocalDate.now(),
-                timestamp = Instant.now(),
+                timestamp = System.currentTimeMillis(),
                 mealType = json.optString("meal_type", "點心"),
                 foodName = json.optString("food_name", text),
                 calories = json.optInt("calories", 0),
@@ -185,10 +191,14 @@ fun HomeScreen(
     val userProfileRepo = remember { UserProfileRepository(appCtx) }
     val roleRepo = remember { UserRoleProfileRepository() }
 
-    // 初始化 DietRecordRepository
-    val dietRecordRepository = remember(appCtx) { DietRecordRepository(appCtx) }
-
     var myRole by remember { mutableStateOf(UserRole.TRAINEE) }
+
+    val firestoreProfileRepo = remember { FirebaseUserProfileFirestoreRepository() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val remoteProfile by remember(firestoreProfileRepo, lifecycleOwner) {
+        firestoreProfileRepo.observeMyProfile()
+    }.collectAsStateWithLifecycle(initialValue = UserProfile(), lifecycleOwner = lifecycleOwner)
+
     var myNickname by remember { mutableStateOf("Trainee") }
 
     LaunchedEffect(Unit) {
@@ -204,8 +214,13 @@ fun HomeScreen(
 
     val firebaseAuth = remember { FirebaseAuth.getInstance() }
     val currentUser = firebaseAuth.currentUser
-    val displayNickname = remember(myNickname, currentUser?.displayName) {
-        if (!currentUser?.displayName.isNullOrBlank()) currentUser?.displayName!! else myNickname
+
+    val displayNickname = remember(remoteProfile.nickname, myNickname, currentUser?.displayName) {
+        when {
+            remoteProfile.nickname.isNotBlank() -> remoteProfile.nickname
+            !currentUser?.displayName.isNullOrBlank() -> currentUser?.displayName!!
+            else -> myNickname
+        }
     }
 
     val userWeight by userProfileRepo.weightKg.collectAsState(initial = 70f)
@@ -242,13 +257,13 @@ fun HomeScreen(
                         Text("Fitness", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, letterSpacing = 0.4.sp)
                     },
                     actions = {
-                        IconButton(onClick = { showProfileDialog = true }) {
+                        IconButton(onClick = { selected = "profile_basic_settings" }) {
                             Icon(imageVector = Icons.Outlined.Settings, contentDescription = "設定")
                         }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = Color.Transparent,
-                        titleContentColor = TechColors.NeonBlue,
+                        titleContentColor = MaterialTheme.colorScheme.primary,
                         navigationIconContentColor = Color.White,
                         actionIconContentColor = Color.White
                     )
@@ -256,16 +271,25 @@ fun HomeScreen(
             }
         },
         bottomBar = {
-            Column {
-                BannerAd()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 讓「廣告 + 底部按鈕」整組避開系統導覽列/手勢列，避免被吃掉或間距怪
+                    .navigationBarsPadding()
+            ) {
+                BannerAd(
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 NavigationBar(
-                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
                     containerColor = Color.Transparent
                 ) {
-                    // ★★★ 修正底部導航欄：恢復日曆，移除日誌 (日誌改在首頁按鈕) ★★★
                     val items = listOf(
                         Triple("plans", Icons.Default.Home, "首頁"),
-                        Triple("calendar", Icons.Default.DateRange, "日曆"), // 恢復日曆
+                        Triple("calendar", Icons.Default.DateRange, "日曆"),
                         Triple("food", Icons.Default.PhotoCamera, "辨識"),
                         Triple("chat", Icons.Filled.ChatBubbleOutline, "AI"),
                         Triple("analytics", Icons.Filled.Analytics, "分析")
@@ -278,11 +302,11 @@ fun HomeScreen(
                             label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                             alwaysShowLabel = false,
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = TechColors.NeonBlue,
-                                selectedTextColor = TechColors.NeonBlue,
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
                                 unselectedIconColor = Color.Gray,
                                 unselectedTextColor = Color.Gray,
-                                indicatorColor = TechColors.NeonBlue.copy(alpha = 0.2f)
+                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                             )
                         )
                     }
@@ -360,18 +384,10 @@ fun HomeScreen(
                         "create_workout" -> WorkoutCreateScreen(repository = repository, onDone = { selectTab("plans") })
                         "activity" -> ActivityLogScreen(
                             activityRepository = activityRepository,
-                            onBack = { selectTab("plans") }
+                            onBack = { selectTab("workout") }
                         )
-                        // ★★★ 使用 Optimized 相機版本 ★★★
                         "food" -> FoodRecognitionScreenOptimized(activityRepository = activityRepository)
-
-                        // ★★★ 食物日誌 (從首頁按鈕進入) ★★★
-                        "foodlog" -> FoodLogScreen(
-                            dietRepository = dietRecordRepository,
-                            onBack = { selectTab("plans") }
-                        )
-
-                        // ★★★ 日曆 (從底部導航進入) ★★★
+                        "foodlog" -> FoodLogScreen(onBack = { selectTab("workout") })
                         "calendar" -> CalendarScreen(
                             repository = repository,
                             onOpenPlan = {
@@ -379,11 +395,10 @@ fun HomeScreen(
                                 selected = "workout_plan_detail"
                             }
                         )
-
-                        "settings" -> SettingsScreen(onDone = { selectTab("plans") })
+                        "settings" -> SettingsScreen(onDone = { selectTab("workout") })
                         "chat" -> ChatScreen()
-                        "inbody" -> InBodyScreen(repository = inBodyRepo, onDone = { selectTab("plans") })
-                        "cardio" -> CardioScreen(repository = cardioRepo, activityRepository = activityRepository, userWeightKg = userWeight, onDone = { selectTab("plans") })
+                        "inbody" -> InBodyScreen(repository = inBodyRepo, onDone = { selectTab("workout") })
+                        "cardio" -> CardioScreen(repository = cardioRepo, activityRepository = activityRepository, userWeightKg = userWeight, onDone = { selectTab("workout") })
                         "analytics" -> AnalyticsScreen(repository, activityRepository, inBodyRepo, onOpenPartAnalysis = { selected = "part_analysis" }, onOpenInBodyAnalysis = { selected = "inbody_analysis" })
                         "coach_center" -> com.example.fitness.coach.ui.CoachCenterScreen(authRepository = com.example.fitness.coach.CoachAuthRepository(LocalContext.current.applicationContext), trainingPlanRepository = repository, onBack = { selected = "workout" }, onNavigateToCreatePlan = { selected = "coach_plan_create" })
                         "coach_plan_create" -> {
@@ -402,14 +417,22 @@ fun HomeScreen(
                                 SideEffect { selected = "calendar" }
                             }
                         }
-                        "social" -> com.example.fitness.ui.social.SocialCenterScreen(onBack = { selected = "plans" })
+                        "social" -> com.example.fitness.ui.social.SocialCenterScreen(onBack = { selectTab("plans") })
                         "messages" -> com.example.fitness.ui.messaging.ChatRoomListScreen(
                             isCoach = myRole == com.example.fitness.coach.UserRole.COACH,
                             onChatRoomSelected = { chatRoomId -> selected = "chat_room" },
-                            onBack = { selected = "plans" }
+                            onBack = { selectTab("plans") }
                         )
-                        "templates" -> WorkoutTemplateMarketScreen(onBack = { selected = "plans" })
-                        "advanced_settings" -> com.example.fitness.ui.settings.AdvancedSettingsScreen(onBack = { selected = "plans" })
+                        "templates" -> WorkoutTemplateMarketScreen(onBack = { selectTab("plans") })
+                        "advanced_settings" -> com.example.fitness.ui.settings.AdvancedSettingsScreen(onBack = { selectTab("workout") })
+                        "training_history" -> TrainingHistoryScreen(
+                            trainingRecordRepository = trainingRecordRepository,
+                            modifier = Modifier.fillMaxSize(),
+                            onBack = { selectTab("workout") }
+                        )
+                        "profile_basic_settings" -> ProfileBasicSettingsScreen(
+                            onBack = { selectTab("workout") }
+                        )
                         else -> TrainingPlanScreen(repository = repository, activityRepository = activityRepository, trainingRecordRepository = trainingRecordRepository, onRecordCreated = { selectTab("activity") })
                     }
                 }
@@ -439,30 +462,28 @@ fun HomeDashboardContent(
     scope: kotlinx.coroutines.CoroutineScope,
     cardShape: androidx.compose.ui.graphics.Shape
 ) {
-    val now = remember { mutableStateOf(LocalDateTime.now()) }
-    val logsState by activityRepository.logs.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val dietRecords by FirebaseDietRecordRepository.records.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycleOwner = lifecycleOwner)
+    val trainingLogs by activityRepository.logs.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycleOwner = lifecycleOwner)
     val today = LocalDate.now(ZoneId.systemDefault())
 
     // 篩選今日飲食和運動記錄
-    val todayFoodLogs = remember(logsState, today) {
-        logsState.filter {
-            it.type.startsWith("飲食") &&
-                    it.start.atZone(ZoneId.systemDefault()).toLocalDate() == today
-        }
+    val todayFoodLogs = remember(dietRecords, today) {
+        dietRecords.filter { it.date == today }
     }
 
-    val todayExerciseLogs = remember(logsState, today) {
-        logsState.filter {
+    val todayExerciseLogs = remember(trainingLogs, today) {
+        trainingLogs.filter {
             !it.type.startsWith("飲食") &&
                     it.start.atZone(ZoneId.systemDefault()).toLocalDate() == today
         }
     }
 
     // 計算營養攝取
-    val todayConsumedCalories = todayFoodLogs.sumOf { it.calories ?: 0.0 }
-    val todayProtein = todayFoodLogs.sumOf { it.proteinGrams ?: 0.0 }
-    val todayCarbs = todayFoodLogs.sumOf { it.carbsGrams ?: 0.0 }
-    val todayFat = todayFoodLogs.sumOf { it.fatGrams ?: 0.0 }
+    val todayConsumedCalories = todayFoodLogs.sumOf { it.calories.toDouble() }
+    val todayProtein = todayFoodLogs.sumOf { it.proteinG ?: 0.0 }
+    val todayCarbs = todayFoodLogs.sumOf { it.carbsG ?: 0.0 }
+    val todayFat = todayFoodLogs.sumOf { it.fatG ?: 0.0 }
 
     // 計算運動消耗
     val todayExerciseCalories = todayExerciseLogs.sumOf { it.calories ?: 0.0 }
@@ -483,12 +504,12 @@ fun HomeDashboardContent(
         item {
             Box(modifier = Modifier.fillMaxWidth().glassEffect(cornerRadius = 24.dp).padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(56.dp).border(2.dp, TechColors.NeonBlue, CircleShape).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
-                        Text(displayNickname.take(1).uppercase(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = TechColors.NeonBlue)
+                    Box(modifier = Modifier.size(56.dp).border(2.dp, MaterialTheme.colorScheme.primary, CircleShape).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                        Text(displayNickname.take(1).uppercase(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
-                        Text("Hi, $displayNickname", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = TechColors.NeonBlue)
+                        Text("Hi, $displayNickname", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
                         Text(if (myRole == UserRole.COACH) "Coach" else "Trainee", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
                     }
                 }
@@ -522,8 +543,7 @@ fun HomeDashboardContent(
         item {
             val shortcuts = listOf(
                 ShortcutItem("Workout", Icons.Default.FitnessCenter) { selectTab("workout") },
-                ShortcutItem("訓練紀錄", Icons.Default.History) { selectTab("activity") },
-                // ★★★ 這個捷徑會開啟飲食日誌頁面 (foodlog) ★★★
+                ShortcutItem("訓練紀錄", Icons.Default.History) { selectTab("training_history") },
                 ShortcutItem("飲食紀錄", Icons.Default.Restaurant) { selectTab("foodlog") },
                 ShortcutItem("社交中心", Icons.Default.People) { selectTab("social") },
                 ShortcutItem("訊息", Icons.Default.Message) { selectTab("messages") },
@@ -553,48 +573,93 @@ fun HomeDashboardContent(
     }
 }
 
-// ... (後面的 FoodLogScreen, SmartFoodEntryDialog 等程式碼保持不變，直接沿用) ...
-// 為了版面簡潔，下方是接續上一個回應的程式碼內容
+@Composable
+private fun DateSwitcherRow(
+    date: LocalDate,
+    onDateChange: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.glassEffect(16.dp).padding(8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = { onDateChange(date.minusDays(1)) }) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Color.White)
+        }
+        Text(
+            text = date.format(DateTimeFormatter.ofPattern("yyyy/MM/dd")),
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        IconButton(onClick = { onDateChange(date.plusDays(1)) }) {
+            Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color.White)
+        }
+    }
+}
 
-// ★★★ 全新的 FoodLogScreen ★★★
 @Composable
 fun FoodLogScreen(
-    dietRepository: DietRecordRepository,
     modifier: Modifier = Modifier,
-    onBack: (() -> Unit)?
+    onBack: (() -> Unit)? = null
 ) {
+    // 單一資料源：Firestore snapshot
+    val dietRepository = FirebaseDietRecordRepository
+
     var currentDate by remember { mutableStateOf(LocalDate.now()) }
-    var records by remember { mutableStateOf<List<DietRecord>>(emptyList()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val records by dietRepository.records.collectAsStateWithLifecycle(
+        initialValue = emptyList(),
+        lifecycleOwner = lifecycleOwner
+    )
+
+    val filteredRecords = remember(records, currentDate) {
+        records.filter { it.date == currentDate }
+    }
+
     var showAddDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
-    // Listen for date changes and update records
-    LaunchedEffect(currentDate, showAddDialog) {
-        records = dietRepository.getRecordsForDate(currentDate)
-    }
-
     fun deleteRecord(record: DietRecord) {
         scope.launch {
-            dietRepository.remove(record.id)
-            records = dietRepository.getRecordsForDate(currentDate)
+            dietRepository.deleteRecord(record.id)
         }
     }
 
-    val totalCalories = records.sumOf { it.calories }
-    val totalProtein = records.sumOf { it.proteinG ?: 0.0 }
-    val totalCarbs = records.sumOf { it.carbsG ?: 0.0 }
-    val totalFat = records.sumOf { it.fatG ?: 0.0 }
+    val totalCalories = filteredRecords.sumOf { it.calories }
+    val totalProtein = filteredRecords.sumOf { it.proteinG ?: 0.0 }
+    val totalCarbs = filteredRecords.sumOf { it.carbsG ?: 0.0 }
+    val totalFat = filteredRecords.sumOf { it.fatG ?: 0.0 }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             // 1. Title Bar
             Box(modifier = Modifier.fillMaxWidth().glassEffect(cornerRadius = 24.dp)) {
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) } else Spacer(Modifier.width(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
+                        }
+                    } else {
+                        Spacer(Modifier.width(8.dp))
+                    }
                     Column(modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                        Text("飲食日誌", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = TechColors.NeonBlue)
-                        Text("AI 智慧營養分析", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(0.8f))
+                        Text(
+                            "飲食日誌",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = TechColors.NeonBlue
+                        )
+                        Text(
+                            "AI 智慧營養分析",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(0.8f)
+                        )
                     }
                     IconButton(onClick = { showAddDialog = true }) {
                         Icon(Icons.Default.Add, contentDescription = "Add Food", tint = TechColors.NeonBlue)
@@ -605,24 +670,11 @@ fun FoodLogScreen(
             Spacer(Modifier.height(12.dp))
 
             // 2. Date Selector
-            Row(
-                modifier = Modifier.fillMaxWidth().glassEffect(16.dp).padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { currentDate = currentDate.minusDays(1) }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
-                }
-                Text(
-                    text = currentDate.format(DateTimeFormatter.ofPattern("yyyy/MM/dd")),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(onClick = { currentDate = currentDate.plusDays(1) }) {
-                    Icon(Icons.Default.ArrowForward, null, tint = Color.White)
-                }
-            }
+            DateSwitcherRow(
+                date = currentDate,
+                onDateChange = { newDate: LocalDate -> currentDate = newDate },
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Spacer(Modifier.height(12.dp))
 
@@ -633,19 +685,36 @@ fun FoodLogScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("$totalCalories", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(
+                                "$totalCalories",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
                             Text("Kcal", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("${"%.1f".format(totalProtein)}g", style = MaterialTheme.typography.titleMedium, color = Color(0xFF4ECDC4))
+                            Text(
+                                "${"%.1f".format(totalProtein)}g",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color(0xFF4ECDC4)
+                            )
                             Text("蛋白質", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("${"%.1f".format(totalFat)}g", style = MaterialTheme.typography.titleMedium, color = Color(0xFF95E77E))
+                            Text(
+                                "${"%.1f".format(totalFat)}g",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color(0xFF95E77E)
+                            )
                             Text("脂肪", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("${"%.1f".format(totalCarbs)}g", style = MaterialTheme.typography.titleMedium, color = Color(0xFFA78BFA))
+                            Text(
+                                "${"%.1f".format(totalCarbs)}g",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color(0xFFA78BFA)
+                            )
                             Text("碳水", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                     }
@@ -659,14 +728,19 @@ fun FoodLogScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 20.dp)
             ) {
-                val grouped = records.groupBy { it.mealType }
+                val grouped = filteredRecords.groupBy { it.mealType }
                 val mealOrder = listOf("早餐", "午餐", "晚餐", "點心")
 
                 mealOrder.forEach { type ->
                     val mealRecords = grouped[type]
                     if (!mealRecords.isNullOrEmpty()) {
                         item {
-                            Text(type, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(0.8f), modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+                            Text(
+                                type,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White.copy(0.8f),
+                                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                            )
                         }
                         items(mealRecords) { record ->
                             DietRecordCard(record, onDelete = { deleteRecord(record) })
@@ -674,9 +748,12 @@ fun FoodLogScreen(
                     }
                 }
 
-                if (records.isEmpty()) {
+                if (filteredRecords.isEmpty()) {
                     item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(30.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Text("尚無紀錄，點擊右上角 + 新增", color = Color.Gray)
                         }
                     }
@@ -690,9 +767,9 @@ fun FoodLogScreen(
                 onDismiss = { showAddDialog = false },
                 onConfirm = { newRecord ->
                     scope.launch {
+                        // date 由本頁選擇的日曆決定；userId 由 FirebaseDietRecordRepository 強制補齊
                         val recordToSave = newRecord.copy(date = currentDate)
                         dietRepository.addRecord(recordToSave)
-                        records = dietRepository.getRecordsForDate(currentDate)
                         showAddDialog = false
                     }
                 }
@@ -701,7 +778,6 @@ fun FoodLogScreen(
     }
 }
 
-// ★★★ SmartFoodEntryDialog ★★★
 @Composable
 fun SmartFoodEntryDialog(
     currentUserId: String,
@@ -757,9 +833,9 @@ fun SmartFoodEntryDialog(
                                         if (result != null) {
                                             foodName = result.foodName
                                             calories = result.calories.toString()
-                                            protein = result.proteinG.toString()
-                                            carbs = result.carbsG.toString()
-                                            fat = result.fatG.toString()
+                                            protein = (result.proteinG ?: 0.0).toString()
+                                            carbs = (result.carbsG ?: 0.0).toString()
+                                            fat = (result.fatG ?: 0.0).toString()
                                             selectedMealType = result.mealType
                                         } else {
                                             errorMessage = "分析失敗。請檢查網路連線或 API Key，或者試著簡化描述。"
@@ -827,7 +903,7 @@ fun SmartFoodEntryDialog(
                             id = UUID.randomUUID().toString(),
                             userId = currentUserId,
                             date = LocalDate.now(),
-                            timestamp = Instant.now(),
+                            timestamp = System.currentTimeMillis(),
                             mealType = selectedMealType,
                             foodName = foodName,
                             calories = calories.toIntOrNull() ?: 0,
@@ -865,6 +941,7 @@ fun DietRecordCard(record: DietRecord, onDelete: () -> Unit) {
         }
     }
 }
+
 
 // ------------------------------------
 // UI Components
@@ -907,7 +984,9 @@ fun PrimaryActionRow(primaryText: String, primaryIcon: ImageVector, onPrimary: (
 }
 
 @Composable
-fun BannerAd(modifier: Modifier = Modifier) {
+private fun BannerAd(
+    modifier: Modifier = Modifier
+) {
     AndroidView(modifier = modifier.fillMaxWidth().height(50.dp), factory = { ctx -> AdView(ctx).apply { setAdSize(AdSize.BANNER); adUnitId = "ca-app-pub-3940256099942544/6300978111"; loadAd(AdRequest.Builder().build()) } })
 }
 
@@ -1009,6 +1088,18 @@ fun NutritionProgressCard(
     targetFat: Float = 0f,
     remainingCalories: Float
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val nutritionRepo = remember { AdvancedNutritionRepository(context) }
+    val waterGoal by nutritionRepo.waterGoal.collectAsState(initial = 2000.0)
+    var showWaterGoalDialog by remember { mutableStateOf(false) }
+
+    // 改成即時監聽 Firestore，避免「按了沒反應」
+    val todayWaterIntake by nutritionRepo.observeTodayWaterIntake().collectAsState(initial = 0.0)
+
+    // 移除一次性讀取
+    // LaunchedEffect(Unit) { todayWaterIntake = nutritionRepo.getTodayWaterIntake() }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1094,6 +1185,43 @@ fun NutritionProgressCard(
                 )
             }
 
+            // ===== 水分追蹤（從進階設定移到營養攝取） =====
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "水分追蹤",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(0.8f),
+                    fontSize = 11.sp
+                )
+                TextButton(onClick = { showWaterGoalDialog = true }, contentPadding = PaddingValues(0.dp)) {
+                    Text("設定目標", color = TechColors.NeonBlue, fontSize = 11.sp)
+                }
+            }
+
+            WaterIntakeCard(
+                consumed = todayWaterIntake.toInt(),
+                goal = waterGoal.toInt(),
+                onAddWater = { amountMl ->
+                    scope.launch {
+                        val result = nutritionRepo.logWaterIntake(amountMl.toDouble())
+                        if (result.isFailure) {
+                            Toast.makeText(
+                                context,
+                                "水分紀錄失敗：${result.exceptionOrNull()?.message ?: "未知錯誤"}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        // 成功時不需要手動加，listener 會自動推最新總量
+                    }
+                }
+            )
+
             if (remainingCalories > 0) {
                 Box(
                     modifier = Modifier
@@ -1150,6 +1278,19 @@ fun NutritionProgressCard(
                 }
             }
         }
+    }
+
+    if (showWaterGoalDialog) {
+        WaterGoalDialog(
+            currentGoal = waterGoal.toInt(),
+            onGoalSet = { goal ->
+                scope.launch {
+                    nutritionRepo.setWaterGoal(goal.toDouble())
+                    showWaterGoalDialog = false
+                }
+            },
+            onDismiss = { showWaterGoalDialog = false }
+        )
     }
 }
 
@@ -1245,20 +1386,21 @@ fun NutritionProgressBar(
                             )
                         )
                     )
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.3f),
-                                    Color.Transparent
-                                )
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animatedProgress)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.25f),
+                                Color.Transparent
                             )
                         )
-                )
-            }
+                    )
+            )
         }
     }
 }

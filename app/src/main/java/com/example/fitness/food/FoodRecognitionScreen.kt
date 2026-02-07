@@ -3,13 +3,13 @@ package com.example.fitness.food
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.fitness.activity.ActivityLogRepository
 import com.example.fitness.activity.ActivityRecord
 import com.example.fitness.data.DietRecord
-import com.example.fitness.data.DietRecordRepository
-import java.time.Instant
+import com.example.fitness.data.FirebaseDietRecordRepository
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -82,7 +82,10 @@ import com.example.fitness.ui.SecurePrefs
 data class FoodAnalysis(
     val name: String,
     val calories: Double?,
-    val nutrients: Map<String, Double>
+    val nutrients: Map<String, Double>,
+    // AI 額外輸出（可選）
+    val items: List<String>? = null,
+    val rawText: String? = null
 )
 
 @Composable
@@ -90,7 +93,7 @@ fun FoodRecognitionScreenOptimized(activityRepository: ActivityLogRepository, mo
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
-    val dietRepository = remember { DietRecordRepository(context) }
+    val dietRepository = remember { FirebaseDietRecordRepository }
 
     // ★ 修改處：畫面啟動時，自動執行一次模型檢查
     LaunchedEffect(Unit) {
@@ -398,8 +401,7 @@ fun FoodRecognitionScreenOptimized(activityRepository: ActivityLogRepository, mo
                     onClick = { galleryLauncher.launch("image/*") },
                     modifier = Modifier
                         .weight(1f)
-                        .height(50.dp)
-                        .neonGlowBorder(cornerRadius = 12.dp, borderWidth = 1.5.dp),
+                        .height(50.dp),
                     enabled = !analyzing,
                     border = androidx.compose.foundation.BorderStroke(
                         1.5.dp,
@@ -926,7 +928,11 @@ fun FoodRecognitionScreenOptimized(activityRepository: ActivityLogRepository, mo
                         coroutineScope.launch {
                             try {
                                 // 計算正確的時間戳
-                                val recordDateTime = selectedDate.atTime(selectedTime).atZone(ZoneId.systemDefault()).toInstant()
+                                val recordEpochMillis = selectedDate
+    .atTime(selectedTime)
+    .atZone(ZoneId.systemDefault())
+    .toInstant()
+    .toEpochMilli()
 
                                 val dietRecord = DietRecord(
                                     id = UUID.randomUUID().toString(),
@@ -937,12 +943,29 @@ fun FoodRecognitionScreenOptimized(activityRepository: ActivityLogRepository, mo
                                     proteinG = analysisResult!!.nutrients["protein"]?.times(portionQuantity),
                                     carbsG = analysisResult!!.nutrients["carbs"]?.times(portionQuantity),
                                     fatG = analysisResult!!.nutrients["fat"]?.times(portionQuantity),
-                                    timestamp = recordDateTime,
-                                    userId = null
+                                    timestamp = recordEpochMillis,
+                                    // 讓 repository 補齊 userId（也可自行填 currentUser.uid）
+                                    userId = null,
+                                    items = analysisResult!!.items,
+                                    rawAnalysisText = analysisResult!!.rawText
                                 )
-                                dietRepository.addRecord(dietRecord)
-                                savedToLog = true
-                                showSaveDialog = false
+                                try {
+                                    val result = com.example.fitness.data.FirebaseDietRecordRepository.addRecord(dietRecord)
+                                    result.fold(
+                                        onSuccess = {
+                                            savedToLog = true
+                                            showSaveDialog = false
+                                            errorMsg = null
+                                            Log.d("FoodRecognition", "Saved diet record: $it")
+                                        },
+                                        onFailure = { err ->
+                                            errorMsg = "儲存失敗: ${err.message}"
+                                            Log.e("FoodRecognition", "Save failed", err)
+                                        }
+                                    )
+                                } catch (e: Exception) {
+                                    errorMsg = "儲存失敗: ${e.message}"
+                                }
                             } catch (e: Exception) {
                                 errorMsg = "儲存失敗: ${e.message}"
                             }

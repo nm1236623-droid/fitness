@@ -7,16 +7,15 @@ import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
-import java.time.Instant
 import java.time.LocalDate
-import java.util.*
 
 object FirebaseDietRecordRepository {
     private val firestore = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
-    
-    private val collection = firestore.collection("diet_records")
-    
+
+    // 統一飲食日誌 collection：所有畫面/AI 儲存/首頁進度條都看同一個
+    private val collection = firestore.collection("food_logs")
+
     private val _records = MutableStateFlow<List<DietRecord>>(emptyList())
     val records = _records.asStateFlow()
 
@@ -35,11 +34,11 @@ object FirebaseDietRecordRepository {
                         Log.e("FirebaseDietRecordRepo", "Listen failed: ${error.message}")
                         return@addSnapshotListener
                     }
-                    
+
                     val dietRecords = snapshot?.documents?.mapNotNull { doc ->
                         parseDietRecord(doc)
                     } ?: emptyList()
-                    
+
                     _records.value = dietRecords
                     Log.d("FirebaseDietRecordRepo", "Loaded ${dietRecords.size} diet records from Firestore")
                 }
@@ -48,21 +47,33 @@ object FirebaseDietRecordRepository {
 
     private fun parseDietRecord(doc: com.google.firebase.firestore.DocumentSnapshot): DietRecord? {
         return try {
-            val data = doc.data
-            val dateString = data?.get("dateIso") as? String
-            val defaultDate = LocalDate.now().toString()
-            
+            val data = doc.data ?: return null
+
+            val dateIso = data["dateIso"] as? String
+            // 不要用 LocalDate.now() 當 fallback，避免「昨天的紀錄隔天變今天」的視覺錯誤
+            val parsedDate = runCatching {
+                dateIso?.let { LocalDate.parse(it) }
+            }.getOrNull() ?: return null
+
+            // timestamp 統一用 epochMillis(Long)
+            val epochMillis = (data["timestamp"] as? Number)?.toLong() ?: 0L
+
+            @Suppress("UNCHECKED_CAST")
+            val items = data["items"] as? List<String>
+
             DietRecord(
                 id = doc.id,
-                foodName = data?.get("foodName") as? String ?: "",
-                calories = (data?.get("calories") as? Number)?.toInt() ?: 0,
-                date = LocalDate.parse(dateString ?: defaultDate),
-                mealType = data?.get("mealType") as? String ?: "",
-                proteinG = data?.get("proteinG") as? Double,
-                carbsG = data?.get("carbsG") as? Double,
-                fatG = data?.get("fatG") as? Double,
-                timestamp = (data?.get("timestamp") as? com.google.firebase.Timestamp)?.toInstant() ?: Instant.now(),
-                userId = data?.get("userId") as? String
+                foodName = data["foodName"] as? String ?: "",
+                calories = (data["calories"] as? Number)?.toInt() ?: 0,
+                date = parsedDate,
+                mealType = data["mealType"] as? String ?: "",
+                proteinG = (data["proteinG"] as? Number)?.toDouble(),
+                carbsG = (data["carbsG"] as? Number)?.toDouble(),
+                fatG = (data["fatG"] as? Number)?.toDouble(),
+                timestamp = epochMillis,
+                userId = data["userId"] as? String,
+                items = items,
+                rawAnalysisText = data["rawAnalysisText"] as? String
             )
         } catch (e: Exception) {
             Log.e("FirebaseDietRecordRepo", "Error parsing document ${doc.id}: ${e.message}")
@@ -75,8 +86,12 @@ object FirebaseDietRecordRepository {
         if (currentUser == null) {
             Result.failure(Exception("User not authenticated"))
         } else {
-            val recordWithUser = record.copy(userId = currentUser.uid)
-            val data = mapOf(
+            // 若外部沒帶 userId/date/timestamp，這裡也補齊，但不會覆蓋合法值
+            val recordWithUser = record.copy(
+                userId = currentUser.uid,
+                timestamp = if (record.timestamp > 0L) record.timestamp else System.currentTimeMillis()
+            )
+            val data = hashMapOf(
                 "foodName" to recordWithUser.foodName,
                 "calories" to recordWithUser.calories,
                 "dateIso" to recordWithUser.date.toString(),
@@ -84,10 +99,13 @@ object FirebaseDietRecordRepository {
                 "proteinG" to recordWithUser.proteinG,
                 "carbsG" to recordWithUser.carbsG,
                 "fatG" to recordWithUser.fatG,
+                // 統一：epoch millis
                 "timestamp" to recordWithUser.timestamp,
-                "userId" to recordWithUser.userId
+                "userId" to recordWithUser.userId,
+                "items" to recordWithUser.items,
+                "rawAnalysisText" to recordWithUser.rawAnalysisText
             )
-            
+
             val documentRef = collection.add(data).await()
             Log.d("FirebaseDietRecordRepo", "Successfully added diet record with ID: ${documentRef.id}")
             Result.success(documentRef.id)
@@ -98,7 +116,7 @@ object FirebaseDietRecordRepository {
     }
 
     suspend fun updateRecord(record: DietRecord): Result<Unit> = try {
-        val data = mapOf(
+        val data = hashMapOf(
             "foodName" to record.foodName,
             "calories" to record.calories,
             "dateIso" to record.date.toString(),
@@ -107,9 +125,11 @@ object FirebaseDietRecordRepository {
             "carbsG" to record.carbsG,
             "fatG" to record.fatG,
             "timestamp" to record.timestamp,
-            "userId" to record.userId
+            "userId" to record.userId,
+            "items" to record.items,
+            "rawAnalysisText" to record.rawAnalysisText
         )
-        
+
         collection.document(record.id).set(data).await()
         Log.d("FirebaseDietRecordRepo", "Successfully updated diet record with ID: ${record.id}")
         Result.success(Unit)
@@ -139,11 +159,11 @@ object FirebaseDietRecordRepository {
                 .orderBy("timestamp", Query.Direction.DESCENDING)
                 .get()
                 .await()
-            
+
             val dietRecords = docs.documents.mapNotNull { doc ->
                 parseDietRecord(doc)
             }
-            
+
             Result.success(dietRecords)
         }
     } catch (e: Exception) {
@@ -160,12 +180,12 @@ object FirebaseDietRecordRepository {
                 .whereEqualTo("userId", currentUser.uid)
                 .get()
                 .await()
-            
+
             val batch = firestore.batch()
             docs.documents.forEach { doc ->
                 batch.delete(doc.reference)
             }
-            
+
             batch.commit().await()
             Log.d("FirebaseDietRecordRepo", "Successfully cleared all diet records for user")
             Result.success(Unit)

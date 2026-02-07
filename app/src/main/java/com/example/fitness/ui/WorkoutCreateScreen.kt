@@ -23,14 +23,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.fitness.BuildConfig
 import com.example.fitness.ai.GeminiTrainingPlanParser
+import com.example.fitness.ai.UserTrainingContextRepository
 import com.example.fitness.data.TrainingPlan
 import com.example.fitness.data.TrainingPlanRepository
-import com.example.fitness.inbody.InBodyRepository
+import com.example.fitness.inbody.FirebaseInBodyRepository
 import com.example.fitness.network.GeminiClient
 import com.example.fitness.ui.theme.TechColors
 import com.example.fitness.ui.theme.glassEffect
 import com.example.fitness.ui.theme.neonGlowBorder
-import com.example.fitness.user.UserProfileRepository
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 
@@ -53,20 +53,19 @@ fun WorkoutCreateScreen(
     repository: TrainingPlanRepository,
     onDone: () -> Unit,
 ) {
-    val ctx = LocalContext.current
-    val appCtx = remember(ctx) { ctx.applicationContext }
+    val userCtxRepo = remember { UserTrainingContextRepository() }
+    val userCtx by userCtxRepo.observeMyContext().collectAsState(initial = null)
 
-    val userRepo = remember(appCtx) { UserProfileRepository(appCtx) }
-    val inBodyRepo = remember(appCtx) { InBodyRepository(appCtx) }
+    val profile = userCtx?.profile
+    val latestInBody = userCtx?.latestInBody
 
-    val weightKg by userRepo.weightKg.collectAsState(initial = 70f)
-    val heightCm by userRepo.heightCm.collectAsState(initial = 170f)
+    val weightKg = profile?.weightKg ?: 70f
+    val heightCm = profile?.heightCm ?: 170f
 
-    // ★ 修改 1: 預設年齡改為空字串，型別改為 String 以支援空值
-    var ageYearsInput by remember { mutableStateOf("") }
-
-    val inBodyRecords by inBodyRepo.records.collectAsState()
-    val latestInBody = remember(inBodyRecords) { inBodyRecords.maxByOrNull { it.timestamp } }
+    // 年齡：從 profile 自動帶入（允許空值時顯示空字串）
+    var ageYearsInput by remember(profile?.age) {
+        mutableStateOf(profile?.age?.takeIf { it > 0 }?.toString().orEmpty())
+    }
 
     val muscleMassKg = latestInBody?.muscleMassKg
     val bodyFatPercent = latestInBody?.bodyFatPercent
@@ -345,7 +344,6 @@ fun WorkoutCreateScreen(
                 }
             }
 
-            // ... (Preview Section 及 Save Dialog 保持不變) ...
 
             // Preview Section
             previewPlan?.let { plan ->

@@ -1,13 +1,18 @@
 package com.example.fitness.nutrition
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import java.time.Instant
@@ -54,7 +59,7 @@ data class Micronutrients(
 data class WaterIntake(
     val id: String,
     val amount: Double,      // ml
-    val timestamp: Instant = Instant.now(),
+    val timestamp: Timestamp = Timestamp.now(),
     val userId: String
 )
 
@@ -77,6 +82,7 @@ class AdvancedNutritionRepository(private val context: Context) {
         private val FIBER_GOAL_KEY = doublePreferencesKey("fiber_goal_g")
         private const val DEFAULT_WATER_GOAL = 2000.0 // ml
         private const val DEFAULT_FIBER_GOAL = 25.0   // g
+        private const val WATER_COLLECTION = "water_logs"
     }
 
     // ==================== 水分追蹤 ====================
@@ -105,20 +111,28 @@ class AdvancedNutritionRepository(private val context: Context) {
             val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
                 ?: return Result.failure(Exception("未登入"))
 
-            val intake = WaterIntake(
-                id = java.util.UUID.randomUUID().toString(),
-                amount = amountMl,
-                userId = userId
+            val id = java.util.UUID.randomUUID().toString()
+            val nowTs = Timestamp.now()
+
+            // rules 需要 amount:number，這裡統一寫 amount，並保留 amountMl 方便舊版查詢相容
+            val data = hashMapOf(
+                "id" to id,
+                "amount" to amountMl,
+                "amountMl" to amountMl,
+                "userId" to userId,
+                "timestamp" to nowTs,
+                "timestampEpochMillis" to nowTs.toDate().time
             )
 
             com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                .collection("water_intake")
-                .document(intake.id)
-                .set(intake)
+                .collection(WATER_COLLECTION)
+                .document(id)
+                .set(data)
                 .await()
 
             Result.success(Unit)
         } catch (e: Exception) {
+            Log.e("WaterIntake", "Failed to log water intake", e)
             Result.failure(e)
         }
     }
@@ -136,19 +150,59 @@ class AdvancedNutritionRepository(private val context: Context) {
             val endOfDay = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
 
             val snapshot = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                .collection("water_intake")
+                .collection(WATER_COLLECTION)
                 .whereEqualTo("userId", userId)
-                .whereGreaterThanOrEqualTo("timestamp", startOfDay)
-                .whereLessThan("timestamp", endOfDay)
+                .whereGreaterThanOrEqualTo("timestamp", Timestamp(startOfDay.epochSecond, startOfDay.nano))
+                .whereLessThan("timestamp", Timestamp(endOfDay.epochSecond, endOfDay.nano))
                 .get()
                 .await()
 
-            snapshot.documents.sumOf { 
-                it.getDouble("amount") ?: 0.0
+            snapshot.documents.sumOf {
+                // 先讀 amount，再 fallback 到 amountMl
+                it.getDouble("amount") ?: it.getDouble("amountMl") ?: 0.0
             }
         } catch (e: Exception) {
             0.0
         }
+    }
+
+    /**
+     * 監聽「今日」水分攝取總量（ml）。
+     *
+     * - 以 Firestore snapshot listener 當單一資料來源（SSOT），
+     *   寫入成功後會自動推送最新總量。
+     * - 若未登入，會持續 emit 0.0。
+     */
+    fun observeTodayWaterIntake(): Flow<Double> = callbackFlow {
+        val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+        if (userId.isNullOrBlank()) {
+            trySend(0.0)
+            close()
+            return@callbackFlow
+        }
+
+        val today = LocalDate.now(ZoneId.systemDefault())
+        val startOfDay = today.atStartOfDay(ZoneId.systemDefault()).toInstant()
+        val endOfDay = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
+
+        val registration = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection(WATER_COLLECTION)
+            .whereEqualTo("userId", userId)
+            .whereGreaterThanOrEqualTo("timestamp", Timestamp(startOfDay.epochSecond, startOfDay.nano))
+            .whereLessThan("timestamp", Timestamp(endOfDay.epochSecond, endOfDay.nano))
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) {
+                    Log.e("WaterIntake", "Snapshot listener error", e)
+                    trySend(0.0)
+                    return@addSnapshotListener
+                }
+                val total = snapshot?.documents?.sumOf {
+                    it.getDouble("amount") ?: it.getDouble("amountMl") ?: 0.0
+                } ?: 0.0
+                trySend(total)
+            }
+
+        awaitClose { registration.remove() }
     }
 
     // ==================== 餐食時間分析 ====================

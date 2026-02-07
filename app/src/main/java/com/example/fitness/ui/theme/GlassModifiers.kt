@@ -10,6 +10,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 
 /**
  * 高科技玻璃感 UI 顏色常量
@@ -69,6 +72,35 @@ fun Modifier.glassEffect(cornerRadius: Dp = 24.dp) = this.then(
 )
 
 /**
+ * Theme-aware 的玻璃效果：用 MaterialTheme.colorScheme 產生更一致的結果。
+ *
+ * 注意：Modifier 擴充本身不需要是 @Composable。
+ * 呼叫端可傳入 MaterialTheme.colorScheme 的顏色（在 composable 內取得）。
+ */
+fun Modifier.glassEffectThemed(
+    scheme: ColorScheme,
+    cornerRadius: Dp = 24.dp
+) = this.then(
+    Modifier
+        .shadow(8.dp, RoundedCornerShape(cornerRadius))
+        .border(
+            1.dp,
+            scheme.outline.copy(alpha = 0.6f),
+            RoundedCornerShape(cornerRadius)
+        )
+        .background(
+            Brush.linearGradient(
+                listOf(
+                    scheme.surface.copy(alpha = 0.18f),
+                    scheme.surface.copy(alpha = 0.08f)
+                )
+            ),
+            shape = RoundedCornerShape(cornerRadius)
+        )
+        .clip(RoundedCornerShape(cornerRadius))
+)
+
+/**
  * 霓虹邊框發光效果修飾符
  * 用於重要操作按鈕
  */
@@ -95,4 +127,46 @@ fun Modifier.neonGlowBorder(
             ),
             shape = RoundedCornerShape(cornerRadius)
         )
+)
+
+/**
+ * Theme-aware 的霓虹邊框：預設用 colorScheme.primary。
+ *
+ * 注意：這個函數不是 composable，呼叫端請傳入 MaterialTheme.colorScheme。
+ */
+fun Modifier.neonGlowBorderThemed(
+    scheme: ColorScheme,
+    cornerRadius: Dp = 16.dp,
+    borderWidth: Dp = 2.dp,
+    glowColor: Color = scheme.primary
+) = neonGlowBorder(
+    cornerRadius = cornerRadius,
+    borderWidth = borderWidth,
+    glowColor = glowColor
+)
+
+/**
+ * 便利版本：在 Composable 中直接呼叫即可（自動讀取 MaterialTheme.colorScheme）。
+ */
+@Composable
+fun Modifier.glassEffectThemedM3(
+    cornerRadius: Dp = 24.dp
+) = glassEffectThemed(
+    scheme = MaterialTheme.colorScheme,
+    cornerRadius = cornerRadius
+)
+
+/**
+ * 便利版本：在 Composable 中直接呼叫即可（自動讀取 MaterialTheme.colorScheme）。
+ */
+@Composable
+fun Modifier.neonGlowBorderThemedM3(
+    cornerRadius: Dp = 16.dp,
+    borderWidth: Dp = 2.dp,
+    glowColor: Color = MaterialTheme.colorScheme.primary
+) = neonGlowBorderThemed(
+    scheme = MaterialTheme.colorScheme,
+    cornerRadius = cornerRadius,
+    borderWidth = borderWidth,
+    glowColor = glowColor
 )

@@ -2,65 +2,76 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --- 輔助函式 (Helper Functions) ---
+
+    // 檢查用戶是否已登入
     function signedIn() {
       return request.auth != null;
     }
 
+    // 檢查操作者是否為用戶本人
     function isSelf(uid) {
       return signedIn() && request.auth.uid == uid;
     }
 
-    // users/{uid}
+    // 檢查資料的 userId 欄位是否屬於操作者
+    // 用於簡化各類 Log 的規則
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    // --- 用戶核心資料 (Users Collection) ---
     match /users/{uid} {
       allow read: if isSelf(uid);
+      // 創建時必須指定角色
       allow create: if isSelf(uid) && request.resource.data.role in ['COACH', 'TRAINEE'];
-      // keep role immutable
+      // 更新時禁止修改角色 (Role is immutable)
       allow update: if isSelf(uid) && request.resource.data.role == resource.data.role;
       allow delete: if false;
     }
 
-    // coachDirectory/{displayNameLower}
+    // --- 教練目錄 (Public/Shared Data) ---
     match /coachDirectory/{key} {
       allow read: if signedIn();
       allow create, update: if signedIn() && request.resource.data.coachId == request.auth.uid;
       allow delete: if false;
     }
 
-    // coachIdDirectory/{coachId} (reverse index: ID -> Name)
+    // 教練 ID 反向索引
     match /coachIdDirectory/{coachId} {
-      // trainees need this to show coach names in dropdown
       allow read: if signedIn();
-      // only the coach themself can write their own entry
       allow create, update: if isSelf(coachId) && request.resource.data.coachId == request.auth.uid;
       allow delete: if false;
     }
 
-    // coaches/{coachId}/plans/{planId}
+    // --- 教練專區 (Coaches Area) ---
     match /coaches/{coachId} {
       allow read: if signedIn();
 
+      // 教練的計畫
       match /plans/{planId} {
-        // only COACH can write their own plans
+        // 只有教練本人可以增刪改
         allow create, update, delete: if isSelf(coachId)
           && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'COACH';
 
-        // coach can read, or trainees who joined this coach can read
+        // 讀取權限：教練本人 或 擁有會員資格的學員
         allow read: if isSelf(coachId)
           || (signedIn() && get(/databases/$(database)/documents/trainees/$(request.auth.uid)/memberships/$(coachId)).data.coachId == coachId);
       }
 
-      // coach-managed trainee directory
+      // 教練管理的學員名單
       match /trainees/{traineeId} {
         allow read: if isSelf(coachId);
         allow create, update, delete: if isSelf(coachId)
           && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'COACH';
       }
 
+      // 學員完成度紀錄
       match /trainees/{traineeId}/completions/{completionId} {
-        // trainee can write their own completion
-        allow create: if signedIn() && request.auth.uid == traineeId;
+        // 學員可以標記自己完成
+        allow create: if isSelf(traineeId);
 
-        // coach (and must be COACH) can read
+        // 教練可以讀取
         allow read: if isSelf(coachId)
           && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'COACH';
 
@@ -68,20 +79,21 @@ service cloud.firestore {
       }
     }
 
-    // trainees/{traineeId}/...
+    // --- 學員專區 (Trainees Area) ---
     match /trainees/{traineeId} {
       allow read: if isSelf(traineeId);
 
+      // 安全性提示：目前的邏輯允許學員自己寫入會員資格。
+      // 在正式產品中，建議由教練端或 Cloud Function 寫入，以防止學員偽造會員資格來偷看教練計畫。
       match /memberships/{coachId} {
-        allow create, update, delete, read: if isSelf(traineeId);
+        allow read, write: if isSelf(traineeId);
       }
 
-      // coach pushes plans to trainee inbox
+      // 收件匣 (教練派發的計畫)
       match /inboxPlans/{planId} {
-        // trainee can read their own inbox
         allow read: if isSelf(traineeId);
 
-        // coach can create/update/delete only if this trainee joined the coach
+        // 教練派發計畫的權限檢查
         allow create, update, delete: if signedIn()
           && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'COACH'
           && get(/databases/$(database)/documents/trainees/$(traineeId)/memberships/$(request.auth.uid)).data.coachId == request.auth.uid
@@ -90,86 +102,175 @@ service cloud.firestore {
       }
     }
 
-    // === 現有的日誌規則 (保持不變) ===
-    // Food, Activity, and Training Logs - User-specific data
+    // === 各類日誌與數據 (Logs & Records) ===
+    // 修正重點：將 `create` 與 `read, update, delete` 分開寫
+
+    // 飲食紀錄 (food_logs)
     match /food_logs/{docId} {
-      allow read, write, delete: if signedIn() && request.auth.uid == resource.data.userId;
-      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
+      allow read, update, delete: if isOwner(resource.data.userId); // 檢查現有文檔
+      allow create: if isOwner(request.resource.data.userId);       // 檢查請求數據
     }
-    
+
+    // 飲食紀錄 (diet_records - 舊版兼容)
+    match /diet_records/{docId} {
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // 活動紀錄
     match /activity_logs/{docId} {
-      allow read, write, delete: if signedIn() && request.auth.uid == resource.data.userId;
-      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
     }
 
+    // 訓練紀錄 (舊版)
     match /training_records/{docId} {
-      allow read, write, delete: if signedIn() && request.auth.uid == resource.data.userId;
-      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
     }
 
-    // === 新增的 Firebase 整合模組 Security Rules ===
+    // 跑步紀錄 (新版)
+    match /running_records/{recordId} {
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
 
-    // 用戶資料 - user_profiles/{uid}
+    // InBody 數據
+    match /inbody_records/{recordId} {
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // 體重變化趨勢
+    match /weight_trends/{trendId} {
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // 體態照片
+    match /body_photos/{photoId} {
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // 訓練分析
+    match /training_analysis/{analysisId} {
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // 部位分析
+    match /part_analysis/{analysisId} {
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // 自定義訓練計畫
+    match /training_plans/{planId} {
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // === 用戶設定與狀態 ===
+
     match /user_profiles/{uid} {
-      allow read, create, update: if isSelf(uid);
+      allow read, write: if isSelf(uid);
+    }
+
+    // 用戶偏好設定 (水分追蹤等)
+    match /user_preferences/{uid} {
+      allow read, write: if isSelf(uid);
+    }
+
+    // 水分攝取紀錄（新版命名：water_logs）
+    match /water_logs/{recordId} {
+      allow read, delete: if isOwner(resource.data.userId);
+
+      allow create: if request.resource.data.userId is string
+        && isOwner(request.resource.data.userId)
+        && request.resource.data.amount is number
+        && (
+          request.resource.data.timestamp is timestamp
+          || request.resource.data.timestampEpochMillis is int
+          || request.resource.data.timestampEpochMillis is number
+        );
+
+      allow update: if isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+    }
+
+    // 水分攝取紀錄（舊：water_intake - 先保留相容）
+    match /water_intake/{recordId} {
+      // read/delete：檢查現有文件 owner
+      allow read, delete: if isOwner(resource.data.userId);
+
+      // create：必須有正確 owner 與必要欄位型別
+      allow create: if request.resource.data.userId is string
+        && isOwner(request.resource.data.userId)
+        && request.resource.data.amount is number
+        // timestamp 必須存在（允許 Timestamp 或 epochMillis）
+        && (
+          request.resource.data.timestamp is timestamp
+          || request.resource.data.timestampEpochMillis is int
+          || request.resource.data.timestampEpochMillis is number
+        );
+
+      // update：必須是 owner，且禁止更改 userId
+      allow update: if isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+    }
+
+    // 有氧運動紀錄 (跑步、單車等)
+    match /cardio_records/{recordId} {
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+    }
+
+    // 聊天室
+    match /chat_rooms/{chatRoomId} {
+      // 教練和學員都可以讀取他們自己的聊天室
+      allow read: if signedIn() &&
+        (resource.data.coachId == request.auth.uid || resource.data.traineeId == request.auth.uid);
+      // 只有教練或學員本人可以創建聊天室
+      allow create: if signedIn() &&
+        (request.resource.data.coachId == request.auth.uid || request.resource.data.traineeId == request.auth.uid);
+      // 更新聊天室 (例如未讀計數)
+      allow update: if signedIn() &&
+        (resource.data.coachId == request.auth.uid || resource.data.traineeId == request.auth.uid);
       allow delete: if false;
     }
 
-    // 跑步記錄 - running_records/{recordId}
-    match /running_records/{recordId} {
-      allow read, write, delete: if signedIn() && request.auth.uid == resource.data.userId;
-      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
+    // 訊息 (聊天室中的訊息)
+    match /messages/{messageId} {
+      // 讀取權限：訊息所屬聊天室的成員
+      allow read: if signedIn();
+      // 創建權限：只有發送者本人
+      allow create: if signedIn() && request.resource.data.senderId == request.auth.uid;
+      // 更新權限：標記已讀等
+      allow update: if signedIn();
+      allow delete: if false;
     }
 
-    // InBody 體態數據 - inbody_records/{recordId}
-    match /inbody_records/{recordId} {
-      allow read, write, delete: if signedIn() && request.auth.uid == resource.data.userId;
-      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
-    }
-
-    // 體態相簿元數據 - body_photos/{photoId}
-    match /body_photos/{photoId} {
-      allow read, write, delete: if signedIn() && request.auth.uid == resource.data.userId;
-      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
-    }
-
-    // 數據分析 - training_analysis/{analysisId}
-    match /training_analysis/{analysisId} {
-      allow read, write, delete: if signedIn() && request.auth.uid == resource.data.userId;
-      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
-    }
-
-    // 部位分析 - part_analysis/{analysisId}
-    match /part_analysis/{analysisId} {
-      allow read, write, delete: if signedIn() && request.auth.uid == resource.data.userId;
-      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
-    }
-
-    // 訓練計劃 - training_plans/{planId}
-    match /training_plans/{planId} {
-      allow read, write, delete: if signedIn() && request.auth.uid == resource.data.userId;
-      allow create: if signedIn() && request.auth.uid == request.resource.data.userId;
-    }
-
-    // 聊天歷史 - chat_history/{userId}
+    // 聊天紀錄 (注意：目前設定僅允許本人讀寫，若是雙人聊天需要修改)
     match /chat_history/{userId} {
-      allow read, write, delete: if isSelf(userId);
-      allow create: if isSelf(userId);
+      allow read, write: if isSelf(userId);
     }
 
-    // 教練選擇 - coach_plan_selections/{userId}
     match /coach_plan_selections/{userId} {
-      allow read, write, delete: if isSelf(userId);
-      allow create: if isSelf(userId);
+      allow read, write: if isSelf(userId);
     }
 
-    // 教練顯示名稱 - coach_display_names/{userId}
     match /coach_display_names/{userId} {
-      allow read, write, delete: if isSelf(userId);
-      allow create: if isSelf(userId);
+      allow read, write: if isSelf(userId);
     }
 
-    // Deny all other access
+    // 訓練模板市場 (公開讀取)
+    match /workout_templates/{templateId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn();
+    }
+
+    // 拒絕所有未明確定義的存取
     match /{document=**} {
       allow read, write: if false;
     }

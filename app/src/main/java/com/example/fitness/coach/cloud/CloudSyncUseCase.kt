@@ -326,30 +326,5 @@ class CloudSyncUseCase(
                 android.util.Log.e("CloudSyncUseCase", "Failed to save training record: ${error.message}")
             }
         )
-
-        // 3) Optional Firestore backup (best-effort)
-        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-        if (uid != null) {
-            val firestoreRepo = com.example.fitness.firestore.FirestoreTrainingRepository()
-            val fsRecord = com.example.fitness.firestore.TrainingRecord(
-                id = java.util.UUID.randomUUID().toString(),
-                date = tr.date,
-                type = tr.planName,
-                durationMinutes = (tr.durationInSeconds / 60).coerceAtLeast(0),
-                exercises = tr.exercises.map { ex ->
-                    com.example.fitness.firestore.ExerciseEntry(
-                        name = ex.name,
-                        sets = ex.sets,
-                        reps = ex.reps,
-                        weight = (ex.weight ?: 0.0).toFloat()
-                    )
-                }
-            )
-            firestoreRepo
-                .addTrainingRecord(uid, fsRecord)
-                .onFailure { t: Throwable ->
-                    android.util.Log.w("FirestoreSync", "Failed to sync training record: ${t.message}")
-                }
-        }
     }
 }

@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -32,7 +33,10 @@ import com.example.fitness.firebase.AuthRepository
 import com.example.fitness.ui.HomeScreen
 import com.example.fitness.ui.PaywallScreen
 import com.example.fitness.ui.SignInScreen
+import com.example.fitness.ui.theme.ColorScheme
 import com.example.fitness.ui.theme.FitnessTheme
+import com.example.fitness.ui.theme.ThemeManager
+import com.example.fitness.ui.theme.ThemeMode
 import com.example.fitness.user.UserRoleProfileRepository
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.MobileAds
@@ -53,7 +57,7 @@ class MainActivity : ComponentActivity() {
     private val sessionManager by lazy { SessionManager(authRepository, sessionRepository) }
 
     // ★ 請確認這是正確的 RevenueCat Key
-    private val revenueCatApiKey = "test_eoeFAKvDQbXCUNjGvFLczYCreIC"
+    private val revenueCatApiKey = "goog_VamwiUCRZkIZdyEueLrLfMmiPMq"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,9 +76,18 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            FitnessTheme {
+            val context = LocalContext.current
+            val themeManager = remember { ThemeManager.getInstance(context) }
+
+            val themeMode by themeManager.themeMode.collectAsState(initial = ThemeMode.AUTO)
+            val colorScheme by themeManager.colorScheme.collectAsState(initial = ColorScheme.NEON_BLUE)
+
+            FitnessTheme(
+                themeMode = themeMode,
+                colorScheme = colorScheme,
+                dynamicColor = false
+            ) {
                 val scope = rememberCoroutineScope()
-                val context = LocalContext.current
                 val appCtx = context.applicationContext
 
                 val credentialManager = remember { CredentialManager.create(context) }

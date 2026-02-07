@@ -1,4 +1,4 @@
-import java.util.Properties // 修正錯誤1：加上這行 Import
+import java.util.Properties // ⚠️ 必須加這行，不然會報錯 "Unresolved reference: util"
 
 plugins {
     alias(libs.plugins.android.application)
@@ -16,19 +16,23 @@ android {
         applicationId = "tw.edu.fju.myfitnessapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.4"
+        versionCode = 8
+        versionName = "1.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // 修正錯誤1：現在可以直接使用 Properties()，不用寫 java.util
+        // ★★★ 關鍵修正：讀取 local.properties 的正確寫法 ★★★
         val localProperties = Properties()
         val localFile = rootProject.file("local.properties")
         if (localFile.exists()) {
             localProperties.load(localFile.inputStream())
         }
 
+        // 這裡會去抓 local.properties 裡面的 geminiApiKey
+        // 如果讀不到，就會是空字串，導致連不上 Gemini
         buildConfigField("String", "GEMINI_API_KEY", "\"${localProperties.getProperty("GEMINI_API_KEY") ?: ""}\"")
+
+        // URL 比較不敏感，如果放在 gradle.properties 可以用 project.findProperty，或者統一都放 local.properties
         buildConfigField("String", "GEMINI_API_URL", "\"${project.findProperty("geminiApiUrl") ?: ""}\"")
         buildConfigField("String", "EDAMAM_APP_ID", "\"${localProperties.getProperty("EDAMAM_APP_ID") ?: ""}\"")
         buildConfigField("String", "EDAMAM_APP_KEY", "\"${localProperties.getProperty("EDAMAM_APP_KEY") ?: ""}\"")
@@ -46,7 +50,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            // 修正錯誤2：已刪除 isZipAlignEnabled = true (新版 Android 預設開啟，不需手動設定)
+            // isZipAlignEnabled = true // 這行已過時，新版 Android Studio 會自動處理，建議刪除避免警告
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -103,8 +107,9 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.google.guava:guava:32.0.1-android")
     implementation("androidx.security:security-crypto:1.0.0")
+    implementation("androidx.concurrent:concurrent-futures:1.2.0")
 
-    // RevenueCat
+    // RevenueCat (保留這行正確的，刪除原本最下面那行重複的 9.19.1)
     implementation("com.revenuecat.purchases:purchases:7.3.1")
 
     // Coil

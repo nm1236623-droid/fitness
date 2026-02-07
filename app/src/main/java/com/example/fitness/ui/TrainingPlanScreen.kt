@@ -1,5 +1,6 @@
 package com.example.fitness.ui
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,7 +38,7 @@ import com.example.fitness.ui.theme.TechColors
 import com.example.fitness.ui.theme.glassEffect
 import com.example.fitness.ui.theme.neonGlowBorder
 import com.example.fitness.user.UserRoleProfileRepository
-import com.google.firebase.auth.FirebaseAuth
+import com.example.fitness.data.FirebaseTrainingRecordRepository
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -284,6 +285,8 @@ fun TrainingPlanScreen(
                                             val estimatedCalories = estimatePlanCalories(plan)
 
                                             // 1. 寫入 Activity Log
+                                            // 注意：為了避免「雙寫入」造成首頁今日消耗重複計算，
+                                            // 這裡只保留 ActivityLogRepository（FirebaseActivityLogRepository）的寫入。
                                             val record = ActivityRecord(
                                                 id = UUID.randomUUID().toString(),
                                                 planId = plan.id,
@@ -296,6 +299,7 @@ fun TrainingPlanScreen(
                                             activityRepository.add(record)
 
                                             // 2. 寫入 Training Record
+                                            // 若後續要完全 Firestore 化，建議 TrainingRecordRepository 也改成只讀寫 Firebase。
                                             val trainingRecord = TrainingRecord(
                                                 planId = plan.id,
                                                 planName = plan.name,
@@ -311,29 +315,57 @@ fun TrainingPlanScreen(
                                                     )
                                                 }
                                             )
-                                            trainingRecordRepository.addRecord(trainingRecord)
 
-                                            // 3. 寫入 Firestore
+                                            // 2. 寫入 Training Record（Firestore /training_records）
+                                            // 注意：TrainingRecordRepository.addRecord() 已被標記為 deprecated no-op
                                             uiScope.launch {
-                                                val uid = FirebaseAuth.getInstance().currentUser?.uid
-                                                if (uid != null) {
-                                                    val fsRecord = com.example.fitness.firestore.TrainingRecord(
-                                                        id = UUID.randomUUID().toString(),
-                                                        date = trainingRecord.date,
-                                                        type = trainingRecord.planName,
-                                                        durationMinutes = (trainingRecord.durationInSeconds / 60).coerceAtLeast(0),
-                                                        exercises = trainingRecord.exercises.map { ex ->
-                                                            com.example.fitness.firestore.ExerciseEntry(
-                                                                name = ex.name,
-                                                                sets = ex.sets,
-                                                                reps = ex.reps,
-                                                                weight = (ex.weight ?: 0.0).toFloat()
-                                                            )
-                                                        }
+                                                val firebaseRepo: FirebaseTrainingRecordRepository? =
+                                                    trainingRecordRepository as? FirebaseTrainingRecordRepository
+
+                                                if (firebaseRepo == null) {
+                                                    Log.w(
+                                                        "TrainingPlanScreen",
+                                                        "trainingRecordRepository is not FirebaseTrainingRecordRepository; skip writing training_records"
                                                     )
-                                                    firestoreTrainingRepository.addTrainingRecord(uid, fsRecord)
+                                                    return@launch
                                                 }
+
+                                                firebaseRepo.addRecordToFirebase(trainingRecord).fold(
+                                                    onSuccess = { _: String ->
+                                                        // ok
+                                                    },
+                                                    onFailure = { error: Throwable ->
+                                                        Log.e(
+                                                            "TrainingPlanScreen",
+                                                            "Failed to add training record: ${error.message}",
+                                                            error
+                                                        )
+                                                    }
+                                                )
                                             }
+
+                                            // 3. （可選）寫入 Firestore training_records：若已統一用 activity_logs / training_records，
+                                            // 這段避免再寫一份不同 collection 的紀錄。
+                                            // uiScope.launch {
+                                            //     val uid = FirebaseAuth.getInstance().currentUser?.uid
+                                            //     if (uid != null) {
+                                            //         val fsRecord = com.example.fitness.firestore.TrainingRecord(
+                                            //             id = UUID.randomUUID().toString(),
+                                            //             date = trainingRecord.date,
+                                            //             type = trainingRecord.planName,
+                                            //             durationMinutes = (trainingRecord.durationInSeconds / 60).coerceAtLeast(0),
+                                            //             exercises = trainingRecord.exercises.map { ex ->
+                                            //                 com.example.fitness.firestore.ExerciseEntry(
+                                            //                     name = ex.name,
+                                            //                     sets = ex.sets,
+                                            //                     reps = ex.reps,
+                                            //                     weight = (ex.weight ?: 0.0).toFloat()
+                                            //                 )
+                                            //             }
+                                            //         )
+                                            //         firestoreTrainingRepository.addTrainingRecord(uid, fsRecord)
+                                            //     }
+                                            // }
 
                                             // ★★★ 4. 寫入 Part Analysis (部位分析) ★★★
                                             uiScope.launch {

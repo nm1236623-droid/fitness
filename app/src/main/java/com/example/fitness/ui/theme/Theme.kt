@@ -8,7 +8,10 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import com.example.fitness.designsystem.DsProvideTokens
 
@@ -79,4 +82,82 @@ fun FitnessTheme(
             content()
         }
     }
+}
+
+@Composable
+fun FitnessTheme(
+    themeMode: ThemeMode,
+    colorScheme: ColorScheme,
+    dynamicColor: Boolean = false,
+    content: @Composable () -> Unit
+) {
+    val context = LocalContext.current
+
+    val darkTheme = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.AUTO -> isSystemInDarkTheme()
+    }
+
+    val baseScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
+
+    val primary = remember(colorScheme) { colorScheme.toPrimaryColor().copy(alpha = 1f) }
+
+    // 用選到的 primary 生成「一整套」配色，確保全 App 的按鈕/Tab/Icon/Progress 都一致
+    val appliedScheme = remember(baseScheme, primary) {
+        baseScheme.withPrimary(primary = primary)
+    }
+
+    MaterialTheme(
+        colorScheme = appliedScheme,
+        typography = Typography,
+        shapes = com.example.fitness.ui.theme.Shapes
+    ) {
+        DsProvideTokens(darkTheme = darkTheme) {
+            content()
+        }
+    }
+}
+
+/**
+ * 以 primary 為主，推導出容器色與 on* 色，避免 UI 出現低對比/看不清楚。
+ * 規則：
+ * - onPrimary/onPrimaryContainer 依 luminance 自動黑/白
+ * - container 用 primary 的 alpha 混合 (簡單且穩定)
+ */
+private fun androidx.compose.material3.ColorScheme.withPrimary(
+    primary: Color,
+): androidx.compose.material3.ColorScheme {
+    val onPrimary = if (primary.luminance() > 0.5f) Color.Black else Color.White
+
+    val primaryContainer = primary.copy(alpha = 0.22f).compositeOver(background)
+    val onPrimaryContainer = if (primaryContainer.luminance() > 0.5f) Color.Black else Color.White
+
+    return copy(
+        primary = primary,
+        onPrimary = onPrimary,
+        primaryContainer = primaryContainer,
+        onPrimaryContainer = onPrimaryContainer,
+        // secondary/tertiary 先沿用 base，以免整站全變同一顏色導致層級不清
+        // 如果你想更強烈的「全站同色」，可再把 secondary/tertiary 也指向 primary。
+    )
+}
+
+/**
+ * 將設定中的 ColorScheme 映射為主色。
+ * 這裡與 ThemeManager.getPrimaryColor() 保持一致，但不依賴 ThemeManager 的 mutable state。
+ */
+private fun ColorScheme.toPrimaryColor(): Color = when (this) {
+    ColorScheme.NEON_BLUE -> TechColors.NeonBlue
+    ColorScheme.PURPLE -> Color(0xFF9C27B0)
+    ColorScheme.GREEN -> Color(0xFF4CAF50)
+    ColorScheme.ORANGE -> Color(0xFFFF9800)
+    ColorScheme.RED -> Color(0xFFF44336)
+    ColorScheme.CUSTOM -> TechColors.NeonBlue
 }
