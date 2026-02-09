@@ -37,7 +37,7 @@
 
 | 登入 / 註冊 | 主畫面 / 儀表板 | AI 健身建議 | 食物辨識 / 紀錄 |
 |:---:|:---:|:---:|:---:|
-| <img width="200" height="400" alt="Image" src="https://github.com/user-attachments/assets/7542cf44-b195-4ab5-9c1d-77f89213a2de" /> | <img src="https://github.com/user-attachments/assets/a560622a-4ac6-4a0f-b7a7-5bbd276336b0" width="220"/> | <img src="https://github.com/user-attachments/assets/735fce5f-9ad3-42ce-87b2-b83c61f81dc9" width="220"/> | <img src="https://github.com/user-attachments/assets/ea3f1fc2-f31d-4d08-beaa-0cca89184d0a" width="220"/> |
+| <img width="200" height="400" alt="Image" src="https://github.com/user-attachments/assets/7542cf44-b195-4ab5-9c1d-77f89213a2de" /> | <img src=img width="200" height="400" alt="Image" src="https://github.com/user-attachments/assets/c64b15a4-fc32-49db-ae2e-47d3bd8d3a55" /> | <img src="https://github.com/user-attachments/assets/735fce5f-9ad3-42ce-87b2-b83c61f81dc9" width="220"/> | <img src="https://github.com/user-attachments/assets/ea3f1fc2-f31d-4d08-beaa-0cca89184d0a" width="220"/> |
 | **Firebase Auth**<br>Google / Email 登入 | **Dashboard**<br>數據視覺化與狀態總覽 | **Gemini AI**<br>動態生成個人化建議 | **Diet Tracking**<br>AI 輔助熱量估算 |
 
 ---
