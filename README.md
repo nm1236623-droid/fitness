@@ -88,15 +88,4 @@
 
 > *此專案目前處於 Google Play 封閉測試階段 (Closed Testing Track)。*
 
-## 🧪 參與測試 (Closed Testing Access)
 
-本專案目前處於 **Google Play 封閉測試** 階段。若您希望在 Android 實機上完整體驗 App 功能（含 AI 建議與雲端同步），請依照 Google Play 規範完成以下步驟：
-
-1.  **Step 1 (加入群組)**：先加入 Google Group 以取得測試資格。
-    * 👉 [點擊加入測試群組](https://groups.google.com/g/mutual-test-group)
-2.  **Step 2 (啟用資格)**：加入群組後，點擊下方連結並選擇「成為測試人員」。
-    * 👉 [啟用測試資格 (Web)](https://play.google.com/apps/testing/tw.edu.fju.myfitnessapp)
-3.  **Step 3 (下載安裝)**：完成上述步驟後，即可在 Google Play 下載。
-    * 👉 [前往 Google Play 下載 FitnessApp](https://play.google.com/store/apps/details?id=tw.edu.fju.myfitnessapp)
-
-> *註：由於是測試版本，若您無法下載，請確認您使用的 Google 帳號是否已加入上述群組。*
