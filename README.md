@@ -86,4 +86,4 @@
 * **Background:** 具備網路工程師背景，熟悉 API 串接與系統架構；目前於輔仁大學進修軟體工程學位。
 * **Contact:** [Email](mailto:513210271@m365.fju.edu.tw)
 
-> *🎉 此應用程式已正式於 Google Play 商店上架。歡迎[點此下載體驗](https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME)！*
+> *🎉 此應用程式已正式於 Google Play 商店上架。歡迎[點此下載體驗]([https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME](https://play.google.com/store/apps/details?id=tw.edu.fju.myfitnessapp))！*
