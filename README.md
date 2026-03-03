@@ -4,7 +4,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
 [![Gemini AI](https://img.shields.io/badge/AI-Google%20Gemini%20Pro-4285F4?logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![Firebase](https://img.shields.io/badge/Backend-Firebase-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com/)
-[![Google Play](https://img.shields.io/badge/Get_it_on-Google_Play-000000?logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME)
+[![Google Play](https://img.shields.io/badge/Get_it_on-Google_Play-000000?logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=tw.edu.fju.myfitnessapp)
 
 > **結合 Google Gemini 生成式 AI 的個人化健身教練，具備完整的商業訂閱模型與雲端同步功能。**
 
@@ -72,7 +72,7 @@
 
 1.  Clone 此專案到本地：
     ```bash
-    git clone [https://github.com/YOUR_USERNAME/FitnessApp.git](https://github.com/YOUR_USERNAME/FitnessApp.git)
+    git clone [https://github.com/nm1236623-droid/FitnessApp.git](https://github.com/nm1236623-droid/FitnessApp.git)
     ```
 2.  在 Android Studio 中開啟專案。
 3.  **注意**：本專案依賴 `local.properties` 中的 API Keys (Gemini API, Firebase Config)。若需編譯執行，請聯繫開發者獲取測試憑證。
@@ -86,4 +86,4 @@
 * **Background:** 具備網路工程師背景，熟悉 API 串接與系統架構；目前於輔仁大學進修軟體工程學位。
 * **Contact:** [Email](mailto:513210271@m365.fju.edu.tw)
 
-> *🎉 此應用程式已正式於 Google Play 商店上架。歡迎[點此下載體驗]([https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME](https://play.google.com/store/apps/details?id=tw.edu.fju.myfitnessapp))！*
+> *🎉 此應用程式已正式於 Google Play 商店上架。歡迎[點此下載體驗](https://play.google.com/store/apps/details?id=tw.edu.fju.myfitnessapp)！*
