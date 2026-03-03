@@ -4,7 +4,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
 [![Gemini AI](https://img.shields.io/badge/AI-Google%20Gemini%20Pro-4285F4?logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![Firebase](https://img.shields.io/badge/Backend-Firebase-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com/)
-[![Status](https://img.shields.io/badge/Status-Closed%20Testing-orange)]()
+[![Google Play](https://img.shields.io/badge/Get_it_on-Google_Play-000000?logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME)
 
 > **結合 Google Gemini 生成式 AI 的個人化健身教練，具備完整的商業訂閱模型與雲端同步功能。**
 
@@ -82,10 +82,8 @@
 ## 👨‍💻 開發者 (Developer)
 
 **Sid Chen (陳佑軒)**
-* **Role:** Android Developer (Independent)
+* **Role:** Android Developer
 * **Background:** 具備網路工程師背景，熟悉 API 串接與系統架構；目前於輔仁大學進修軟體工程學位。
 * **Contact:** [Email](mailto:513210271@m365.fju.edu.tw)
 
-> *此專案目前處於 Google Play 封閉測試階段 (Closed Testing Track)。*
-
-
+> *🎉 此應用程式已正式於 Google Play 商店上架。歡迎[點此下載體驗](https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME)！*
