@@ -11,7 +11,7 @@
 
 ---
 
-## 📱 應用程式畫面 (App Screenshots)
+應用程式畫面 (App Screenshots)
 
 | 🔐 簡單登入 | 📊 數據一看就懂 | 🤖 AI 智能分析 | 🥗 飲食熱量追蹤 |
 | :---: | :---: | :---: | :---: |
@@ -20,7 +20,7 @@
 
 ---
 
-## 🌟 專案亮點 (Key Highlights)
+ 專案亮點 (Key Highlights)
 
 * **🤖 AI 賦能教練**：透過 Prompt Engineering 串接 **Gemini Pro**，根據你的 BMI、目標與飲食紀錄，提供主動式的訓練建議，不再只是冷冰冰的數字。
 * **☁️ 雲端即時同步**：整合 **Firebase (Auth/Firestore)**，確保你的健身進度在不同裝置間無縫接軌。
@@ -29,7 +29,7 @@
 
 ---
 
-## 🛠️ 技術堆疊 (Tech Stack)
+技術堆疊 (Tech Stack)
 
 * **開發語言**：Kotlin (Coroutines, Flow)
 * **架構與核心**：MVVM, Repository Pattern, ViewModel
@@ -40,8 +40,22 @@
 
 ---
 
-## 🚀 如何啟動與執行
+如何啟動與執行
 
 1. **Clone 專案**：
    ```bash
    git clone [https://github.com/nm1236623-droid/FitnessApp.git](https://github.com/nm1236623-droid/FitnessApp.git)
+
+   開啟專案：使用 Android Studio 開啟。
+
+注意事項：本專案依賴 local.properties 中的 API Keys (Gemini, Firebase)。
+如需獲取測試憑證，歡迎聯絡開發者。
+
+背景：具備網路工程師經驗，目前於輔仁大學進修軟體工程。
+
+專長：Android App 開發、API 架構設計、系統整合。
+
+聯絡方式：513210271@m365.fju.edu.tw
+
+🎉 本應用程式已正式於 Google Play 上架！
+👉 點此下載體驗
