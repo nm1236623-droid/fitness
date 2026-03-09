@@ -1,1 +1,24 @@
-🏋️ FitnessApp｜你的 AI 健身小幫手這不只是一個幫你記體重的 App，它更像是一個住在手機裡的私人教練。我開發這款 App 的初衷，是希望讓健身紀錄不再只是冷冰冰的數字。透過 Google Gemini AI，App 能讀懂你的身體數據，並給出真正有用的建議。這是一個完整的產品實踐——從漂亮的介面、雲端同步到訂閱收費模式，全都包辦了！📱 看看它長什麼樣子🔐 簡單登入📊 數據一看就懂🤖 AI 給你建議🥗 算熱量超方便<img src="https://github.com/user-attachments/assets/7542cf44-b195-4ab5-9c1d-77f89213a2de" width="180"><img src="https://github.com/user-attachments/assets/c64b15a4-fc32-49db-ae2e-47d3bd8d3a55" width="180"><img src="https://github.com/user-attachments/assets/43c13f67-1334-4168-b21f-827f8f3d3145" width="180"><img src="https://github.com/user-attachments/assets/b5ea56fa-55fe-4ddf-83ce-0222c530c313" width="180">Firebase AuthGoogle 一鍵登入Dashboard進步清晰可見Gemini AI專專屬個人分析Diet TrackingAI 幫你估熱量🌟 為什麼這個 App 值得你試試？🤖 有大腦的 AI 教練：我串接了 Gemini Pro，它會根據你的 BMI 和飲食紀錄，主動告訴你今天該怎麼吃、怎麼練，不再只是死板的圖表。☁️ 換手機也不怕：用了 Firebase 雲端技術，資料隨時同步。💰 真的能賺錢的架構：我實作了 RevenueCat 訂閱制與 AdMob 廣告，這不是練習作業，而是具備商業潛力的完整產品。🏗️ 穩固的開發架構：採用業界標準的 MVVM 與 Clean Architecture，程式碼好維護、跑起來超順。🛠️ 我的工具箱 (Tech Stack)寫作語言：Kotlin (Coroutines, Flow)架構設計：MVVM, Repository Pattern雲端服務：Firebase (Auth, Firestore, Storage)AI 核心：Google Gemini Pro API商業模組：RevenueCat (訂閱管理), AdMob (廣告)🚀 想親自體驗嗎？這款 App 已經在 Google Play 商店正式上架囉！直接下載體驗：點我前往 Google Play想看原始碼：歡迎 Clone 我的 GitHub。不過提醒一下，因為涉及 API Key 等私密設定，如果你想跑起完整功能，歡迎寄信跟我聊聊拿測試憑證。👨‍💻 關於作者：Sid Chen (陳佑軒)我目前在輔大進修軟體工程。我有網路工程師的背景，這讓我對系統架構和 API 串接特別有心得。如果你對 Android 開發、AI 應用有興趣，或者想找我合作，隨時歡迎聯絡！🎉 讓 AI 陪你一起變壯，現在就下載體驗吧！
+🏋️ FitnessApp｜你的 AI 智能健身教練
+這不只是一個紀錄工具，而是一個住在手機裡的私人教練。 > 結合 Google Gemini AI 與完整商業訂閱模型，讓你的健身數據轉化為真正的行動建議。
+
+🔐 簡單登入	📊 數據一看就懂	🤖 AI 智能分析	🥗 飲食熱量追蹤
+<img src="https://github.com/user-attachments/assets/7542cf44-b195-4ab5-9c1d-77f89213a2de" width="180">	<img src="https://github.com/user-attachments/assets/c64b15a4-fc32-49db-ae2e-47d3bd8d3a55" width="180">	<img src="https://github.com/user-attachments/assets/43c13f67-1334-4168-b21f-827f8f3d3145" width="180">	<img src="https://github.com/user-attachments/assets/b5ea56fa-55fe-4ddf-83ce-0222c530c313" width="180">
+Firebase Auth
+
+
+Google 一鍵登入
+
+Dashboard
+
+
+進步清晰可見
+
+Gemini AI
+
+
+專屬個人化建議
+
+Diet Tracking
+
+
+AI 輔助熱量估算
