@@ -55,7 +55,7 @@
 
 專長：Android App 開發、API 架構設計、系統整合。
 
-聯絡方式：513210271@m365.fju.edu.tw
+聯絡方式：513210271@cloud.fju.edu.tw
 
 🎉 本應用程式已正式於 Google Play 上架！
 [👉 點我前往 Google Play 下載 FitnessApp](https://play.google.com/store/apps/details?id=tw.edu.fju.myfitnessapp&pli=1)
