@@ -61,5 +61,4 @@
 聯絡方式：513210271@cloud.fju.edu.tw
 
 🎉 本應用程式已正式於 Google Play 上架！
-🎉 **本應用程式已正式於 Google Play 上架！**
 [👉 點我前往 Google Play 下載 FitnessApp](https://play.google.com/store/apps/details?id=tw.edu.fju.myfitnessapp&pli=1)
